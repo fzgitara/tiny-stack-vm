@@ -1,28 +1,12 @@
-// Tiny stack VM: runs every /input/<id>/program.bin and writes stdout.bin and exit.txt.
-// Follows make.fun's ISA.md and reference vm.mjs rule for rule.
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-const I = process.env.MAKEFUN_INPUT_DIR ?? '/input';
-const O = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-
-// Per opcode: [immediate bytes, pops, pushes]. A missing entry is an unknown opcode.
-const T = [];
-const def = (ops, imm, pops, pushes) => ops.forEach((o) => (T[o] = [imm, pops, pushes]));
-def([0x00, 0x34], 0, 0, 0);
-def([0x01], 1, 0, 1);
-def([0x02], 4, 0, 1);
-def([0x03, 0x53, 0x50, 0x51], 0, 1, 0);
-def([0x04], 0, 1, 2);
-def([0x05], 0, 2, 2);
-def([0x06], 0, 2, 3);
-def([0x07], 0, 3, 3);
-def([0x17, 0x1b, 0x40], 0, 1, 1);
-def([0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1a, 0x1c, 0x1d, 0x1e, 0x20, 0x21, 0x22], 0, 2, 1);
-def([0x30, 0x33], 2, 0, 0);
-def([0x31, 0x32], 2, 1, 0);
-def([0x41], 0, 2, 0);
-def([0x52], 0, 0, 1);
+import{mkdirSync as m,readdirSync as d,readFileSync as r,writeFileSync as w}from'fs';
+const I=process.env.MAKEFUN_INPUT_DIR??'/input',O=process.env.MAKEFUN_OUTPUT_DIR??'/output';
+// opcode -> [immediate bytes, pops, pushes]; no entry means unknown opcode
+const T=[];
+const def=(ops,i,p,q)=>ops.forEach(o=>T[o]=[i,p,q]);
+def([0,0x34],0,0,0);def([1],1,0,1);def([2],4,0,1);def([3,0x53,0x50,0x51],0,1,0);def([4],0,1,2);
+def([5],0,2,2);def([6],0,2,3);def([7],0,3,3);def([0x17,0x1b,0x40],0,1,1);
+def([0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x18,0x19,0x1a,0x1c,0x1d,0x1e,0x20,0x21,0x22],0,2,1);
+def([0x30,0x33],2,0,0);def([0x31,0x32],2,1,0);def([0x41],0,2,0);def([0x52],0,0,1);
 
 function run(prog, inp) {
   const n = prog.length;
@@ -32,6 +16,7 @@ function run(prog, inp) {
   const out = new Uint8Array(65536);
   let sp = 0, csp = 0, olen = 0, ip = 0, pc = 0, steps = 0;
   const end = (code) => [out.subarray(0, olen), code];
+  const J = () => ((prog[pc - 2] | (prog[pc - 1] << 8)) << 16) >> 16;
   for (;;) {
     if (steps === 1000000) return end(10);
     if (pc < 0 || pc >= n) return end(9);
@@ -79,9 +64,9 @@ function run(prog, inp) {
         D[--sp - 1] = r;
         break;
       }
-      case 0x30: pc = next + (((prog[next - 2] | (prog[next - 1] << 8)) << 16) >> 16); break;
-      case 0x31: if (D[--sp] === 0) pc = next + (((prog[next - 2] | (prog[next - 1] << 8)) << 16) >> 16); break;
-      case 0x32: if (D[--sp] !== 0) pc = next + (((prog[next - 2] | (prog[next - 1] << 8)) << 16) >> 16); break;
+      case 0x30: pc = next + J(); break;
+      case 0x31: if (D[--sp] === 0) pc = next + J(); break;
+      case 0x32: if (D[--sp] !== 0) pc = next + J(); break;
       case 0x33:
         if (csp === 64) return end(7);
         C[csp++] = next;
@@ -121,9 +106,9 @@ function run(prog, inp) {
   }
 }
 
-for (const id of readdirSync(I).sort()) {
-  const [stdout, code] = run(readFileSync(join(I, id, 'program.bin')), readFileSync(join(I, id, 'input.bin')));
-  mkdirSync(join(O, id), { recursive: true });
-  writeFileSync(join(O, id, 'stdout.bin'), stdout);
-  writeFileSync(join(O, id, 'exit.txt'), code + '\n');
+for(const id of d(I).sort()){
+  const [s, code] = run(r(`${I}/${id}/program.bin`), r(`${I}/${id}/input.bin`));
+  m(`${O}/${id}`, {recursive: true});
+  w(`${O}/${id}/stdout.bin`, s);
+  w(`${O}/${id}/exit.txt`, code + '\n');
 }
